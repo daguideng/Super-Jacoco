@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  super-jacoco:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: super-jacoco-app
+    ports:
+      - "8899:8899"
+    volumes:
+      # 挂载到当前项目对应的文件夹
+      - ./app/super_jacoco/clonecode:/home/test/super-jacoco/app/super_jacoco/clonecode
+      - ./report:/home/test/super-jacoco/report
+      - ./report/logs:/home/test/super-jacoco/report/logs
+      - ./cover:/home/test/super-jacoco/cover
+      - ./resource/jacoco-resources:/home/test/super-jacoco/resource/jacoco-resources
+      # 挂载SQL文件目录，便于开发和维护
+      - ./sql:/home/test/super-jacoco/sql:ro
+    environment:
+      # 应用配置
+      - SPRING_APPLICATION_NAME=jacoco
+      - SERVER_PORT=8899
+      - SERVER_HOST=10.43.27.231
+      
+      # JaCoCo版本配置
+      - JACOCO_CLI_VERSION=0.8.11
+      
+      # 项目路径配置
+      - PROJECT_BASE_PATH=/home/test/super-jacoco
+      - PROJECT_CODE_ROOT=/home/test/super-jacoco/app/super_jacoco/clonecode/
+      - PROJECT_LOG_PATH=/home/test/super-jacoco/report/logs/
+      - PROJECT_REPORT_PATH=/home/test/super-jacoco/report/
+      - PROJECT_JACOCO_RESOURCE_PATH=/home/test/super-jacoco/resource/jacoco-resources
+      - PROJECT_JACOCO_PATH=/home/test/super-jacoco/jacoco/jdk21/
+      - PROJECT_COVER_PATH=/home/test/super-jacoco/cover/
+      
+      # 数据源配置
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.jdbc.Driver
+      - SPRING_SESSION_STORE_TYPE=none
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jacoco?useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8&autoReconnect=true&failOverReadOnly=false
+      - SPRING_DATASOURCE_USERNAME=superadmin
+      - SPRING_DATASOURCE_PASSWORD=AdminPassword123!
+      
+      # Git配置
+      - GITLAB_USERNAME=dengdagui
+      - GITLAB_PASSWORD=nopass.8
+      
+      # Mybatis配置
+      - MYBATIS_TYPE_ALIASES_PACKAGE=com.xiaoju.basetech.entity
+      - MYBATIS_MAPPER_LOCATIONS=classpath*:mapper/*.xml
+      
+      # 静态资源配置
+      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/home/test/super-jacoco/report/
+      - SPRING_MVC_STATIC_PATH_PATTERN=/**
+      - SPRING_WEB_RESOURCES_ADD_MAPPINGS=true
+      - SPRING_HTTP_ENCODING_FORCE=true
+      
+      # Swagger配置
+      - SPRINGDOC_SWAGGER_UI_ENABLED=true
+      - SPRINGDOC_API_DOCS_ENABLED=true
+      - SPRINGDOC_API_DOCS_PATH=/v3/api-docs
+      - SPRINGDOC_SWAGGER_UI_PATH=/swagger-ui.html
+      - KNIFE4J_ENABLE=true
+      - KNIFE4J_SETTING_ENABLE_SWAGGER_MODELS=true
+      - KNIFE4J_SETTING_ENABLE_DOCUMENT_MANAGE=true
+      - KNIFE4J_SETTING_ENABLE_VERSION=true
+      - KNIFE4J_SETTING_ENABLE_REQUEST_CACHE=true
+      - KNIFE4J_BASIC_ENABLE=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8899/cov/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - mysql
+    networks:
+      - jacoco-network
+
+  mysql:
+    image: mysql:5.7
+    container_name: jacoco-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=jacoco
+      - MYSQL_USER=superadmin
+      - MYSQL_PASSWORD=AdminPassword123!
+    ports:
+      - "13306:3306"
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    networks:
+      - jacoco-network
+
+# 数据目录挂载到项目文件夹，无需定义数据卷
+
+networks:
+  jacoco-network:
+    driver: bridge

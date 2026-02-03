@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: jacoco-mysql-dev
+    ports:
+      - "13307:3306"  # 开发环境使用不同端口，避免冲突
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=jacoco
+      - MYSQL_USER=superadmin
+      - MYSQL_PASSWORD=AdminPassword123!
+    volumes:
+      - ./mysql/data_dev:/var/lib/mysql  # 开发环境使用独立数据目录
+      - ./sql:/docker-entrypoint-initdb.d  # 去掉:ro，与生产环境一致
+    command:
+      - --character-set-server=utf8
+      - --collation-server=utf8_general_ci
+      - --innodb_buffer_pool_size=256M
+      - --max_connections=1000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      timeout: 20s
+      retries: 10
+      start_period: 40s
+    networks:
+      - jacoco-network
+
+  super-jacoco:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: super-jacoco-dev
+    ports:
+      - "8899:8899"
+    volumes:
+      # 开发环境挂载，支持热重载（如果需要）
+      # - ./target/super-jacoco.jar:/app/super-jacoco.jar  # 开发时挂载新编译的jar
+      - ./app/super_jacoco/clonecode:/home/test/super-jacoco/app/super_jacoco/clonecode
+      - ./report:/home/test/super-jacoco/report
+      - ./report/logs:/home/test/super-jacoco/report/logs
+      - ./cover:/home/test/super-jacoco/cover
+      - ./resource/jacoco-resources:/home/test/super-jacoco/resource/jacoco-resources
+      # 开发环境可以挂载logback配置，方便调试
+      # - ./src/main/resources/logback-spring.xml:/app/config/logback-spring.xml
+    environment:
+      # 开发环境特定配置
+      - SPRING_PROFILES_ACTIVE=development
+      - DEBUG=true
+      - LOGGING_LEVEL_COM_XIAOJU_BASETECH=DEBUG
+      - LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_JDBC=DEBUG
+      
+      # 应用配置
+      - SPRING_APPLICATION_NAME=jacoco-dev
+      - SERVER_PORT=8899
+      - SERVER_HOST=10.43.27.231
+      
+      # JaCoCo版本配置
+      - JACOCO_CLI_VERSION=0.8.11
+      
+      # 项目路径配置
+      - PROJECT_BASE_PATH=/home/test/super-jacoco
+      - PROJECT_CODE_ROOT=/home/test/super-jacoco/app/super_jacoco/clonecode/
+      - PROJECT_LOG_PATH=/home/test/super-jacoco/report/logs/
+      - PROJECT_REPORT_PATH=/home/test/super-jacoco/report/
+      - PROJECT_JACOCO_RESOURCE_PATH=/home/test/super-jacoco/resource/jacoco-resources
+      - PROJECT_JACOCO_PATH=/home/test/super-jacoco/jacoco/jdk21/
+      - PROJECT_COVER_PATH=/home/test/super-jacoco/cover/
+      
+      # 数据源配置 - 与生产环境保持一致
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.jdbc.Driver
+      - SPRING_SESSION_STORE_TYPE=none
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jacoco?useUnicode=true&characterEncoding=utf8&autoReconnect=true&allowMultiQueries=true
+      - SPRING_DATASOURCE_USERNAME=superadmin
+      - SPRING_DATASOURCE_PASSWORD=AdminPassword123!
+      
+      # 连接池配置（开发环境可以调整）
+      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
+      - SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT=600000
+      - SPRING_DATASOURCE_HIKARI_MAX_LIFETIME=1800000
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=5  # 开发环境可以小一些
+      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=2
+      
+      # Git配置
+      - GITLAB_USERNAME=dengdagui
+      - GITLAB_PASSWORD=nopass.8
+      
+      # Mybatis配置
+      - MYBATIS_TYPE_ALIASES_PACKAGE=com.xiaoju.basetech.entity
+      - MYBATIS_MAPPER_LOCATIONS=classpath*:mapper/*.xml
+      - MYBATIS_CONFIGURATION_LOG_IMPL=org.apache.ibatis.logging.stdout.StdOutImpl  # 开发环境开启SQL日志
+      
+      # 静态资源配置
+      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/home/test/super-jacoco/report/
+      - SPRING_MVC_STATIC_PATH_PATTERN=/**
+      - SPRING_WEB_RESOURCES_ADD_MAPPINGS=true
+      - SPRING_HTTP_ENCODING_FORCE=true
+      
+      # 调度任务配置
+      - SCHEDULE_CODE_CLONE_FIXED_DELAY=10000
+      - SCHEDULE_CODE_CLONE_INITIAL_DELAY=10000
+      - SCHEDULE_RESET_STATUS_FIXED_DELAY=600000
+      - SCHEDULE_RESET_STATUS_INITIAL_DELAY=10000
+      - SCHEDULE_ENV_COV_FIXED_DELAY=300000
+      - SCHEDULE_ENV_COV_INITIAL_DELAY=300000
+      - SCHEDULE_COVERAGE_REPORT_NUM=1
+      
+      # Swagger配置
+      - SPRINGDOC_SWAGGER_UI_ENABLED=true
+      - SPRINGDOC_API_DOCS_ENABLED=true
+      - SPRINGDOC_API_DOCS_PATH=/v3/api-docs
+      - SPRINGDOC_SWAGGER_UI_PATH=/swagger-ui.html
+      - KNIFE4J_ENABLE=true
+      - KNIFE4J_SETTING_ENABLE_SWAGGER_MODELS=true
+      - KNIFE4J_SETTING_ENABLE_DOCUMENT_MANAGE=true
+      - KNIFE4J_SETTING_ENABLE_VERSION=true
+      - KNIFE4J_SETTING_ENABLE_REQUEST_CACHE=true
+      - KNIFE4J_BASIC_ENABLE=false
+      
+      # 开发环境调试配置
+      - JAVA_TOOL_OPTIONS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "sleep 10 && java -jar super-jacoco.jar"]
+    networks:
+      - jacoco-network
+
+networks:
+  jacoco-network:
+    driver: bridge

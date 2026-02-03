@@ -1,0 +1,9 @@
+dockerimage/
+jdk21tar/
+*.tar
+*.tar.gz
+*.jar
+target/
+build/
+.m2/
+.gradle/

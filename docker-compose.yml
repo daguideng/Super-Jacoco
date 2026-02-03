@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: jacoco-mysql
+    ports:
+      - "13306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=jacoco
+      - MYSQL_USER=superadmin
+      - MYSQL_PASSWORD=AdminPassword123!
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d
+    command:
+      - --character-set-server=utf8
+      - --collation-server=utf8_general_ci
+      - --innodb_buffer_pool_size=256M
+      - --max_connections=1000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      timeout: 20s
+      retries: 10
+      start_period: 40s
+    networks:
+      - jacoco-network
+
+  super-jacoco:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: super-jacoco-app
+    ports:
+      - "8899:8899"
+    volumes:
+      # 挂载到当前项目对应的文件夹
+      - ./app/super_jacoco/clonecode:/home/test/super-jacoco/app/super_jacoco/clonecode
+      - ./report:/home/test/super-jacoco/report
+      - ./report/logs:/home/test/super-jacoco/report/logs
+      - ./cover:/home/test/super-jacoco/cover
+      - ./resource/jacoco-resources:/home/test/super-jacoco/resource/jacoco-resources
+    environment:
+      # 应用配置
+      - SPRING_APPLICATION_NAME=jacoco
+      - SERVER_PORT=8899
+      - SERVER_HOST=10.43.27.231
+      
+      # JaCoCo版本配置
+      - JACOCO_CLI_VERSION=0.8.11
+      
+      # 项目路径配置
+      - PROJECT_BASE_PATH=/home/test/super-jacoco
+      - PROJECT_CODE_ROOT=/home/test/super-jacoco/app/super_jacoco/clonecode/
+      - PROJECT_LOG_PATH=/home/test/super-jacoco/report/logs/
+      - PROJECT_REPORT_PATH=/home/test/super-jacoco/report/
+      - PROJECT_JACOCO_RESOURCE_PATH=/home/test/super-jacoco/resource/jacoco-resources
+      - PROJECT_JACOCO_PATH=/home/test/super-jacoco/jacoco/jdk21/
+      - PROJECT_COVER_PATH=/home/test/super-jacoco/cover/
+      
+      # 数据源配置 - 使用MySQL 5.7兼容配置
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.jdbc.Driver
+      - SPRING_SESSION_STORE_TYPE=none
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/jacoco?useUnicode=true&characterEncoding=utf8&autoReconnect=true&allowMultiQueries=true
+      - SPRING_DATASOURCE_USERNAME=superadmin
+      - SPRING_DATASOURCE_PASSWORD=AdminPassword123!
+      
+      # 连接池配置
+      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
+      - SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT=600000
+      - SPRING_DATASOURCE_HIKARI_MAX_LIFETIME=1800000
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10
+      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=5
+      
+      # Git配置
+      - GITLAB_USERNAME=gitlab-admin
+      - GITLAB_PASSWORD=gitlab-admin-password
+      
+      # Mybatis配置
+      - MYBATIS_TYPE_ALIASES_PACKAGE=com.xiaoju.basetech.entity
+      
+      # 调度任务配置
+      - SCHEDULE_CODE_CLONE_FIXED_DELAY=10000
+      - SCHEDULE_CODE_CLONE_INITIAL_DELAY=10000
+      - SCHEDULE_RESET_STATUS_FIXED_DELAY=600000
+      - SCHEDULE_RESET_STATUS_INITIAL_DELAY=5000
+      - SCHEDULE_ENV_COV_FIXED_DELAY=10000
+      - SCHEDULE_ENV_COV_INITIAL_DELAY=5000
+      - SCHEDULE_COVERAGE_REPORT_NUM=5
+      - MYBATIS_MAPPER_LOCATIONS=classpath*:mapper/*.xml
+      
+      # 静态资源配置
+      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/home/test/super-jacoco/report/
+      - SPRING_MVC_STATIC_PATH_PATTERN=/**
+      - SPRING_WEB_RESOURCES_ADD_MAPPINGS=true
+      - SPRING_HTTP_ENCODING_FORCE=true
+      
+      # Swagger配置
+      - SPRINGDOC_SWAGGER_UI_ENABLED=true
+      - SPRINGDOC_API_DOCS_ENABLED=true
+      - SPRINGDOC_API_DOCS_PATH=/v3/api-docs
+      - SPRINGDOC_SWAGGER_UI_PATH=/swagger-ui.html
+      - KNIFE4J_ENABLE=true
+      - KNIFE4J_SETTING_ENABLE_SWAGGER_MODELS=true
+      - KNIFE4J_SETTING_ENABLE_DOCUMENT_MANAGE=true
+      - KNIFE4J_SETTING_ENABLE_VERSION=true
+      - KNIFE4J_SETTING_ENABLE_REQUEST_CACHE=true
+      - KNIFE4J_BASIC_ENABLE=false
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "sleep 15 && java -jar super-jacoco.jar"]
+    networks:
+      - jacoco-network
+
+networks:
+  jacoco-network:
+    driver: bridge
